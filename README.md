@@ -3,10 +3,14 @@
 </p>
 
 <div align="center">
-  <h3>
-    <a href="https://endermands.github.io/EAGSSLAM/">Project Page</a> | 
-    <a href="">Paper (Under submission)</a>
-  </h3>
+  <a href="https://endermands.github.io/EAGSSLAM/">
+  <img src='https://img.shields.io/badge/Webpage-EAGSSLAM-yellow' alt='Webpage'></a>  
+  <a href="https://ieeexplore.ieee.org/document/11397266">
+  <img src='https://img.shields.io/badge/Paper-IEEE-blue' alt='Paper'></a>  
+  <a href="https://developer.nvidia.com/cuda-12-1-0-download-archive">
+  <img src='https://img.shields.io/badge/CUDA-12.1-brightgreen' alt='CUDA'></a>  
+  <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">
+  <img src='https://img.shields.io/badge/License-GPLv3-orange' alt='GPLv3'></a>  
 </div>
 
 <p align="center">
@@ -90,6 +94,15 @@ evo_config set plot_backend agg
 If you are running it for the first time, it may take some time to download the model.
 
 # Citation
+
+Early Access
+
 ```bib
-Under submission
+@ARTICLE{EAGSSLAM,
+  author={Mo, Hongle and Zhao, Zifeng and Lu, Yansen and Peng, Li and Liu, Dongmei and Tang, Shaomin and Xu, Bingquan and Qiu, Jian and Han, Peng and Luo, Kaiqing},
+  journal={IEEE Sensors Journal}, 
+  title={EAGS-SLAM: Edge-Assisted Gaussian Splatting SLAM}, 
+  year={2026},
+  doi={10.1109/JSEN.2026.3663321}
+}
 ```
