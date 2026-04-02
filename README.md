@@ -95,14 +95,15 @@ If you are running it for the first time, it may take some time to download the 
 
 # Citation
 
-Early Access
-
 ```bib
 @ARTICLE{EAGSSLAM,
   author={Mo, Hongle and Zhao, Zifeng and Lu, Yansen and Peng, Li and Liu, Dongmei and Tang, Shaomin and Xu, Bingquan and Qiu, Jian and Han, Peng and Luo, Kaiqing},
   journal={IEEE Sensors Journal}, 
   title={EAGS-SLAM: Edge-Assisted Gaussian Splatting SLAM}, 
   year={2026},
+  volume={26},
+  number={7},
+  pages={10552-10561},
   doi={10.1109/JSEN.2026.3663321}
 }
 ```
