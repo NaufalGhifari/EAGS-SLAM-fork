@@ -16,7 +16,7 @@ evo==1.11.0
 python-pycg
 einops
 pybind11==2.13.6
-
+setuptools<81
 
 git+https://github.com/NaufalGhifari/simple-knn.git
 git+https://github.com/NaufalGhifari/diff-gaussian-rasterization-w-pose.git

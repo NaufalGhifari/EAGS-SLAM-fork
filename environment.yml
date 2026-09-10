@@ -12,6 +12,15 @@ dependencies:
   - pytorch=2.1.2
   - pytorch-cuda=12.1 
   - torchvision=0.16.2
+
+  # Build tools & CMake dependencies
+  - cmake=3.22         # OpenCV 3.4 scripts require CMake < 3.28
+  - eigen              # header-only; provides Eigen3::Eigen CMake target
+  - pybind11           # provides pybind11Config.cmake
+  - boost              # (VO needs system + filesystem)
+  - pkg-config         # helps CMake find system libraries
+  - ninja              # faster builds for pip-installed CUDA extensions
+
   - pip
   - pip:
       - pybind11==2.13.6
@@ -32,7 +41,8 @@ dependencies:
       - evo==1.11.0
       - python-pycg
       - einops
+      - setuptools<81
+      - git+https://github.com/NaufalGhifari/simple-knn.git
+      - git+https://github.com/NaufalGhifari/diff-gaussian-rasterization-w-pose.git
       - git+https://github.com/eriksandstroem/evaluate_3d_reconstruction_lib.git@9b3cc08be5440db9c375cc21e3bd65bb4a337db7
-      - git+https://github.com/VladimirYugay/simple-knn.git@c7e51a06a4cd84c25e769fee29ab391fe5d5ff8d
       - git+https://github.com/VladimirYugay/gaussian_rasterizer.git@9c40173fcc8d9b16778a1a8040295bc2f9ebf129
-      - git+https://github.com/rmurai0610/diff-gaussian-rasterization-w-pose.git@43e21bff91cd24986ee3dd52fe0bb06952e50ec7
