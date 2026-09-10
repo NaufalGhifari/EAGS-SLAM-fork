@@ -1,6 +1,6 @@
 inherit_from: configs/TUM_RGBD/tum_rgbd.yaml
 data:
-  input_path: /mnt/sdb/dataset/tum/rgbd/main/dataset/rgbd_dataset_freiburg1_desk
+  input_path: /kaggle/input/datasets/naufalalghifari/tum-rgbd-dataset/rgbd_dataset_freiburg1_desk
   output_path: output/TUM_RGBD/rgbd_dataset_freiburg1_desk/
   scene_name: rgbd_dataset_freiburg1_desk
   frame_limit: -1 # for debugging, set to -1 to disable
