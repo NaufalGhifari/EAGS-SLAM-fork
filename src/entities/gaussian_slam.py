@@ -20,6 +20,7 @@ from src.entities.lc import Loop_closure
 from src.entities.logger import Logger
 from src.entities.submap import Submap
 from src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml
+from src.utils.telemetry import Telemetry
 from src.utils.mapper_utils import exceeds_motion_thresholds 
 from src.utils.utils import np2torch, setup_seed, torch2np
 from src.utils.vis_utils import *  # noqa - needed for debugging
@@ -66,8 +67,10 @@ class GaussianSLAM(object):
         self.new_submap_frame_ids = [0]
 
         self.logger = Logger(self.output_path, config["use_wandb"], verbose=self.VERBOSE)
-        self.mapper = Mapper(config["mapping"], self.dataset, self.logger, device=self.device, verbose=self.VERBOSE)
-        self.tracker = Tracker(config, self.dataset, self.logger, device=self.device)
+        self.telemetry = Telemetry(self.output_path, config, verbose=self.VERBOSE)
+        self.mapper = Mapper(config["mapping"], self.dataset, self.logger, device=self.device,
+                             verbose=self.VERBOSE, telemetry=self.telemetry)
+        self.tracker = Tracker(config, self.dataset, self.logger, device=self.device, telemetry=self.telemetry)
         self.enable_exposure = self.tracker.enable_exposure
         self.LC_PARALLEL:bool = self.config["lc"]["parallel"] if "parallel" in self.config["lc"] else True
         self.loop_closer = Loop_closure(config, self.dataset, self.logger)
@@ -78,6 +81,7 @@ class GaussianSLAM(object):
             self.dataset.cancel_event.set()
             self.dataset.future.result()
         self.loop_closer.executor.shutdown(wait=True, cancel_futures=True)
+        self.telemetry.close()
 
     def _setup_output_path(self, config: dict) -> None:
         """ Sets up the output path for saving results based on the provided configuration. If the output path is not
@@ -311,5 +315,9 @@ class GaussianSLAM(object):
         self.report()
         if (self.tracker.help_camera_initialization or self.tracker.odometry_type == "odometer"):
             self.tracker.vo.report()
+
+        if self.telemetry.enabled:
+            print(f"\nTelemetry written to {self.telemetry.root}")
+        self.telemetry.close()
 
         torch.cuda.empty_cache()

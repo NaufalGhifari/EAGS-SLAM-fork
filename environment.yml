@@ -38,6 +38,7 @@ dependencies:
       - numpy==1.26.4
       - PyQt5==5.15.11
       - matplotlib==3.8
+      - matplotlib-inline
       - evo==1.11.0
       - python-pycg
       - einops

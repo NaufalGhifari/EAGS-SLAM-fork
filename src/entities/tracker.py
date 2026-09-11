@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
 
 import os
+import time
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -19,21 +21,26 @@ from src.utils.tracker_utils import (compute_camera_opt_params,
                                      transformation_to_quaternion)
 from src.utils.utils import (get_render_settings, np2torch,
                              render_gaussian_model, torch2np)
+from src.utils.telemetry import NullTelemetry, pose_errors
 
 from VO.build.lib import VisualOdom
 
 class Tracker(object):
-    def __init__(self, config: dict, dataset: BaseDataset, logger: Logger, device:int=0) -> None:
+    def __init__(self, config: dict, dataset: BaseDataset, logger: Logger, device:int=0,
+                 telemetry=None) -> None:
         """ Initializes the Tracker with a given configuration, dataset, and logger.
         Args:
             config: Configuration dictionary specifying hyperparameters and operational settings.
             dataset: The dataset object providing access to the sequence of frames.
             logger: Logger object for logging the tracking process.
+            telemetry: Optional Telemetry object for structured CSV logging.
         """
         self.device = device
         self.dataset = dataset
         self.logger = logger
         self.config = config
+        self.telemetry = telemetry if telemetry is not None else NullTelemetry()
+        self._init_telemetry = None
         self.filter_alpha = self.config["tracking"]["filter_alpha"]
         self.filter_outlier_depth = self.config["tracking"]["filter_outlier_depth"]
         self.alpha_thre = self.config["tracking"]["alpha_thre"]
@@ -129,7 +136,8 @@ class Tracker(object):
 
     def init_pose_min_loss(self, gaussian_model:GaussianModel, render_settings: dict, init_c2ws:dict,
                            gt_color: torch.Tensor, gt_depth: torch.Tensor, depth_mask: torch.Tensor,
-                           exposure_ab, vo_future:concurrent.futures.Future) -> tuple[np.ndarray, float, float]:
+                           exposure_ab, vo_future:concurrent.futures.Future, gt_c2w=None,
+                           frame_id=None) -> tuple[np.ndarray, float, float]:
         """ Find the min loss of init pose
         Args:
             gaussian_model: The current state of the Gaussian model of the scene.
@@ -139,12 +147,16 @@ class Tracker(object):
             gt_depth: Ground truth depth image:tensor.
             depth_mask: Binary mask indicating valid depth values in the ground truth depth image:tensor.
             vo_future: The future object of visual odometry.
+            gt_c2w: Ground truth camera-to-world pose, used only for telemetry (measuring how much pose
+                error the loss-based candidate selection leaves on the table). May be None.
+            frame_id: Frame index, used only for telemetry.
         Returns:
             tuple: init_c2w:ndarray, min_color_loss:float, min_depth_loss:float
         """
         with torch.no_grad():
             min_loss = float("inf")
             last_w2c = np.linalg.inv(init_c2ws["previous"])
+            candidate_records = []
             for name, c2w in init_c2ws.items():
                 if name == "odometer":
                     c2w = vo_future.result()
@@ -156,6 +168,16 @@ class Tracker(object):
                 total_loss_float = total_loss.item()
                 if self.config["verbose"]:
                     print(f"Init pose method: {name}, loss:{total_loss_float:.6f}")
+                t_err, r_err = pose_errors(c2w, gt_c2w)
+                candidate_records.append({
+                    "name": name,
+                    "c2w": c2w,
+                    "loss": total_loss_float,
+                    "color_loss": color_loss.item(),
+                    "depth_loss": depth_loss.item(),
+                    "t_err": t_err,
+                    "r_err": r_err,
+                })
                 if total_loss_float < min_loss:
                     min_color_loss = color_loss.item()
                     min_depth_loss = depth_loss.item()
@@ -166,7 +188,56 @@ class Tracker(object):
             self.init_pose_cnt[min_name] = self.init_pose_cnt[min_name] + 1
             if self.config["verbose"]:
                 print(f"Using {min_name} init pose\n")   
+
+        self._record_init_telemetry(frame_id, candidate_records, min_name, min_loss, gt_c2w)
         return init_c2w, min_color_loss, min_depth_loss
+
+    def _record_init_telemetry(self, frame_id, candidate_records: list, chosen: str, best_loss: float,
+                               gt_c2w=None) -> None:
+        """ Logs the per-candidate initialization telemetry and stashes the frame-level record.
+
+        The "oracle" candidate is the one with the lowest ground-truth pose error, so comparing
+        the loss-based choice against it quantifies how much accuracy the scoring function is
+        leaving on the table. Ground truth is optional: when it is unavailable (or the dataset
+        is evaluated with ``odometry_type == "gt"``) the error columns are left blank.
+
+        Args:
+            frame_id: Frame index.
+            candidate_records: One dict per candidate with name, pose, losses and ground-truth errors.
+            chosen: Name of the candidate selected by the loss.
+            best_loss: The winning loss value.
+            gt_c2w: Ground truth camera-to-world pose, or None.
+        """
+        telemetry = self.telemetry
+        if not candidate_records or not telemetry.enabled:
+            return
+        scored = [record for record in candidate_records
+                  if record["t_err"] == record["t_err"]]  # NaN check
+        oracle = min(scored, key=lambda record: record["t_err"])["name"] if scored else None
+        for record in candidate_records:
+            telemetry.log_init_candidate(
+                frame_id, record["name"], record["name"] == chosen, record["name"] == oracle,
+                record["loss"], record["color_loss"], record["depth_loss"],
+                record["t_err"], record["r_err"])
+            telemetry.log_pose(frame_id, record["name"], record["c2w"])
+        telemetry.log_pose(frame_id, "gt", gt_c2w, is_gt=True)
+        losses = sorted(record["loss"] for record in candidate_records)
+        chosen_record = next((r for r in candidate_records if r["name"] == chosen), None)
+        oracle_record = next((r for r in candidate_records if r["name"] == oracle), None)
+        self._init_telemetry = {
+            "frame_id": frame_id,
+            "n_candidates": len(candidate_records),
+            "chosen": chosen,
+            "oracle": oracle if oracle is not None else "",
+            "choice_is_oracle": int(oracle is not None and oracle == chosen),
+            "chosen_t_err_m": chosen_record["t_err"] if chosen_record else "",
+            "oracle_t_err_m": oracle_record["t_err"] if oracle_record else "",
+            "headroom_m": (chosen_record["t_err"] - oracle_record["t_err"])
+                if (chosen_record and oracle_record) else "",
+            "best_loss": best_loss,
+            "second_best_loss": losses[1] if len(losses) > 1 else "",
+            "loss_margin": (losses[1] - losses[0]) if len(losses) > 1 else "",
+        }
 
     def report(self):
         if self.config["verbose"]:
@@ -191,6 +262,7 @@ class Tracker(object):
         """
         if self.config["verbose"]:
             print(f"\nTracking frame {frame_id}")
+        track_start = time.perf_counter()
 
         _, image, depth, gt_T_world_cam = self.dataset[frame_id]
         if self.odometry_type == "gt":
@@ -221,17 +293,20 @@ class Tracker(object):
         if (self.odometry_type == "odometer" or self.help_camera_initialization) and frame_id >= 3:
             init_c2ws["odometer"] = None
         init_c2w, init_color_loss, init_depth_loss = self.init_pose_min_loss(gaussian_model, render_settings, init_c2ws,
-                                gt_color, gt_depth, depth_mask, exposure_ab, vo_future)
+                                gt_color, gt_depth, depth_mask, exposure_ab, vo_future,
+                                gt_c2w=gt_T_world_cam, frame_id=frame_id)
         init_2_last = init_c2w @ last_w2c
         last_2_init = np.linalg.inv(init_2_last)
         gt_trans = np2torch(gt_T_world_cam[:3, 3])
         gt_quat = np2torch(R.from_matrix(gt_T_world_cam[:3, :3]).as_quat(canonical=True)[[3, 0, 1, 2]])
 
         num_iters = self.NUM_ITERS
+        fallback_fired = False
         if len(self.frame_color_loss) > 0 and (
                 init_color_loss > self.init_err_ratio * np.median(self.frame_color_loss) or 
                 init_depth_loss > self.init_err_ratio * np.median(self.frame_depth_loss)):
             num_iters *= 2
+            fallback_fired = True
             if self.config["verbose"]:
                 print(f"Higher initial loss, increasing num_iters to {num_iters}")
             if self.help_camera_initialization and self.odometry_type != "odometer":
@@ -345,4 +420,34 @@ class Tracker(object):
         if self.help_camera_initialization or self.odometry_type == "odometer":
             self.vo.setTwc(frame_id, torch2np(final_c2w))
 
-        return torch2np(final_c2w), exposure_ab
+        final_c2w_np = torch2np(final_c2w)
+        self._log_tracking_frame(frame_id, final_c2w_np, gt_T_world_cam, num_iters, fallback_fired,
+                                 (time.perf_counter() - track_start) * 1000.0)
+        return final_c2w_np, exposure_ab
+
+    def _log_tracking_frame(self, frame_id, final_c2w: np.ndarray, gt_c2w, num_iters: int,
+                            fallback_fired: bool, track_ms: float) -> None:
+        """ Writes the per-frame tracking row: the init decision plus the final pose error.
+
+        Args:
+            frame_id: Frame index.
+            final_c2w: The refined camera-to-world pose returned by tracking.
+            gt_c2w: Ground truth camera-to-world pose (may be None).
+            num_iters: Number of refinement iterations actually configured for this frame.
+            fallback_fired: Whether the high-init-loss fallback (iteration doubling / odometer
+                re-initialization) triggered for this frame.
+            track_ms: Wall-clock duration of the whole tracking call in milliseconds.
+        """
+        if not self.telemetry.enabled or self._init_telemetry is None:
+            return
+        final_t_err, final_r_err = pose_errors(final_c2w, gt_c2w)
+        row = dict(self._init_telemetry)
+        row.update({
+            "fallback_fired": int(bool(fallback_fired)),
+            "num_iters": num_iters,
+            "final_t_err_m": final_t_err,
+            "final_r_err_deg": final_r_err,
+            "track_ms": track_ms,
+        })
+        self.telemetry.log_tracking_frame(row)
+        self._init_telemetry = None

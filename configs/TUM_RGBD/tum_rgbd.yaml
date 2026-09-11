@@ -4,7 +4,7 @@ checkpoint_path: null
 use_wandb: false
 seed: 0
 device: 0
-verbose: False
+verbose: True
 
 mapping:
   new_submap_every: 50
@@ -62,6 +62,13 @@ lc:
     use_render: False
   min_interval: 3
   final: False
+
+logging:  # structured CSV telemetry, written to <output_path>/telemetry
+  enabled: True
+  subdir: "telemetry"
+  profile_optimization: True  # CUDA-event timing breakdown of optimize_submap (adds 1 sync per iteration)
+  gradient_stats_every: 10  # iterations between per-Gaussian |dL/dxyz| statistics (0 disables)
+  gradient_dump_frames: []  # frame ids to dump full per-Gaussian gradient norms for
 
 evaluation:
   save_render: False
