@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Union
 
@@ -70,6 +71,42 @@ def save_dict_to_json(dictionary, file_name: str, *, directory: Union[str, Path]
     """
     with open(directory / file_name, "w") as f:
         json.dump(dictionary, f)
+
+
+def unique_run_dir(path: Union[str, Path], overwrite: bool = False) -> Path:
+    """ Resolves a run output directory without silently destroying existing data.
+
+    An existing *empty* directory is reused. A non-empty one is only deleted when
+    ``overwrite`` is set; otherwise a numeric suffix is appended until a free name is
+    found, so repeated runs accumulate instead of overwriting one another. This matters
+    for the per-scene sweeps in ``reproducing.sh``, which run the same config several
+    times and previously had every run but the last deleted on startup.
+
+    Args:
+        path: The desired output directory.
+        overwrite: Whether an existing non-empty directory may be deleted.
+    Returns:
+        A Path that either does not exist yet, or is an existing empty directory.
+    """
+    path = Path(path).expanduser()
+    if not path.exists():
+        return path
+    if path.is_dir() and not any(path.iterdir()):
+        return path
+    if overwrite:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        return path
+    index = 1
+    while True:
+        candidate = path.with_name(f"{path.name}_{index}")
+        if not candidate.exists():
+            print(f"[output] '{path}' already exists; writing to '{candidate}' instead "
+                  f"(pass --overwrite to replace it)", flush=True)
+            return candidate
+        index += 1
 
 
 def load_config(path: str, default_path: str = None) -> dict:

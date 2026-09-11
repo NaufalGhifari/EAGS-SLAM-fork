@@ -69,6 +69,10 @@ lc:
   min_interval: 4
   final: False
   
+data:  # run output layout; per-scene configs add scene_name/input_path/output_path
+  timestamped_output: True  # write to <output_path>/<YYYYMMDD_HHMMSS>[_<run_name>]/ instead of overwriting
+  run_name: ""  # optional tag appended to the timestamped directory name
+
 logging:  # structured CSV telemetry, written to <output_path>/telemetry
   enabled: True
   subdir: "telemetry"

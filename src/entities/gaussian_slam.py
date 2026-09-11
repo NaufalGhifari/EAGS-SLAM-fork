@@ -6,7 +6,6 @@ import pprint
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
-import shutil
 
 import torch
 import cv2
@@ -19,7 +18,7 @@ from src.entities.tracker import Tracker
 from src.entities.lc import Loop_closure
 from src.entities.logger import Logger
 from src.entities.submap import Submap
-from src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml
+from src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml, unique_run_dir
 from src.utils.telemetry import Telemetry
 from src.utils.mapper_utils import exceeds_motion_thresholds 
 from src.utils.utils import np2torch, setup_seed, torch2np
@@ -84,25 +83,42 @@ class GaussianSLAM(object):
         self.telemetry.close()
 
     def _setup_output_path(self, config: dict) -> None:
-        """ Sets up the output path for saving results based on the provided configuration. If the output path is not
-        specified in the configuration, it creates a new directory with a timestamp.
-        Args:
-            config: A dictionary containing the experiment configuration including data and output path information.
-        """
-        if "output_path" not in config["data"]:
-            output_path = Path(config["data"]["output_path"])
-            self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.output_path = output_path / self.timestamp
-        else:
-            self.output_path = Path(config["data"]["output_path"])
+        """ Resolves the run output directory and creates its subdirectories.
 
-        if os.path.exists(self.output_path):
-            shutil.rmtree(self.output_path)
-        self.output_path.mkdir(parents=True)
-        os.makedirs(self.output_path / "mapping_vis")
-        os.makedirs(self.output_path / "tracking_vis")
-        os.makedirs(self.output_path / "poses")
-        os.makedirs(self.output_path / "submaps")
+        The configured ``data.output_path`` is treated as a *run root*. By default a
+        timestamped (and optionally tagged) child directory is created inside it, so that
+        repeated runs never overwrite each other. An existing non-empty directory is only
+        deleted when the run was explicitly started with ``--overwrite``; otherwise a
+        numeric suffix is appended.
+
+        ``data.output_path`` is rewritten in place to the resolved run directory so that
+        every downstream consumer (Loop_closure reads the same key, and the saved
+        ``config.yaml`` records where the run actually landed) agrees on one path.
+
+        Args:
+            config: A dictionary containing the experiment configuration including data
+                and output path information.
+        """
+        data_cfg = config["data"]
+        self.output_root = Path(data_cfg["output_path"]).expanduser()
+        run_name = str(data_cfg.get("run_name") or "").strip()
+        overwrite = bool(data_cfg.get("overwrite_output", False))
+
+        if data_cfg.get("timestamped_output", True):
+            self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            leaf = f"{self.timestamp}_{run_name}" if run_name else self.timestamp
+            desired = self.output_root / leaf
+        else:
+            self.timestamp = None
+            desired = self.output_root
+
+        self.output_path = unique_run_dir(desired, overwrite=overwrite)
+        self.output_path.mkdir(parents=True, exist_ok=True)
+        for subdir in ("mapping_vis", "tracking_vis", "poses", "submaps"):
+            os.makedirs(self.output_path / subdir, exist_ok=True)
+
+        data_cfg["output_root"] = str(self.output_root)
+        data_cfg["output_path"] = str(self.output_path)
 
     def should_start_new_submap(self, frame_id: int) -> bool:
         """ Determines whether a new submap should be started based on the motion heuristic or specific frame IDs.

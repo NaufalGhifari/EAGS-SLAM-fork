@@ -81,6 +81,27 @@ python run_slam.py configs/TUM_RGBD/rgbd_dataset_freiburg1_desk.yaml | tee log/t
 
 You can also configure input and output paths in the config yaml file.
 
+Each run writes into a **timestamped subdirectory** of `output_path`, so repeated runs never
+overwrite each other:
+
+```
+output/TUM_RGBD/rgbd_dataset_freiburg1_desk/     <- output_path (run root)
+└── 20250910_064630_baseline/                    <- <YYYYMMDD_HHMMSS>[_<run_name>]
+    ├── config.yaml
+    ├── ate.json, rendering_metrics.json
+    ├── submaps/, mesh/, poses/
+    └── telemetry/                               <- per-frame CSV logs (see docs/telemetry.md)
+```
+
+| Flag | Effect |
+|---|---|
+| `--run_name <tag>` | Label the run, e.g. `--run_name baseline` |
+| `--no_timestamped_output` | Write directly into `output_path` |
+| `--overwrite` | Allow deleting an existing non-empty output directory |
+
+Nothing is deleted without `--overwrite`; an existing directory otherwise gets a numeric
+suffix (`_1`, `_2`, …).
+
 For all scenes:
 ``` shell
 ./reproducing.sh

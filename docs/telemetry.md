@@ -4,7 +4,36 @@ Reference for the CSV telemetry added to the baseline pipeline, and for the thre
 questions it exists to answer.
 
 Implementation: `src/utils/telemetry.py`.
-Write path: `<output_path>/telemetry/`.
+Write path: `<run_dir>/telemetry/`.
+
+## 0. Run output layout
+
+Since the output-path change, `data.output_path` is a **run root** and each run lands in its
+own timestamped subdirectory:
+
+```
+output/TUM_RGBD/rgbd_dataset_freiburg1_desk/     <- data.output_path (run root)
+└── 20250910_064630_baseline/                    <- <YYYYMMDD_HHMMSS>[_<run_name>]
+    ├── config.yaml                              <- resolved config, includes the run path
+    ├── ate.json, rendering_metrics.json
+    ├── submaps/, mesh/, poses/
+    └── telemetry/                               <- the CSVs documented below
+```
+
+`data.output_path` is rewritten in place to the resolved run directory during
+`GaussianSLAM._setup_output_path`, so every downstream consumer agrees on one path.
+Relevant controls:
+
+| Config key | CLI flag | Effect |
+|---|---|---|
+| `data.timestamped_output` | `--no_timestamped_output` | `True` (default) writes into a timestamped child directory |
+| `data.run_name` | `--run_name` | Tag appended to the directory name, e.g. `20250910_064630_baseline` |
+| `data.overwrite_output` | `--overwrite` | Required before an existing non-empty directory is deleted |
+
+Without `--overwrite`, an existing non-empty directory is **never** destroyed: a numeric
+suffix is appended instead (`_1`, `_2`, …). Before this change, every run deleted its
+output directory on startup, which meant `reproducing.sh` — where the same config is run
+three times with only the *log* filenames differing — silently kept only the last run.
 
 This instrumentation is **independent of `verbose`**. `verbose` prints to stdout
 (scrollback only, gone when the terminal closes); telemetry writes analysis-ready CSVs

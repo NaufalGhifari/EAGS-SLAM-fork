@@ -19,7 +19,14 @@ def get_args():
     parser.add_argument('config_path', type=str,
                         help='Path to the configuration yaml file')
     parser.add_argument('--input_path', default="")
-    parser.add_argument('--output_path', default="")
+    parser.add_argument('--output_path', default="",
+                        help='Run root; a timestamped subdirectory is created inside it')
+    parser.add_argument('--run_name', type=str,
+                        help='Tag appended to the timestamped run directory name (e.g. "baseline")')
+    parser.add_argument('--no_timestamped_output', action='store_true',
+                        help='Write directly into --output_path instead of a timestamped subdirectory')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Allow an existing non-empty output directory to be deleted')
     parser.add_argument('--track_w_color_loss', type=float)
     parser.add_argument('--track_alpha_thre', type=float)
     parser.add_argument('--track_iters', type=int)
@@ -48,6 +55,12 @@ def update_config_with_args(config, args):
         config["data"]["input_path"] = args.input_path
     if args.output_path:
         config["data"]["output_path"] = args.output_path
+    if args.run_name:
+        config["data"]["run_name"] = args.run_name
+    if args.no_timestamped_output:
+        config["data"]["timestamped_output"] = False
+    if args.overwrite:
+        config["data"]["overwrite_output"] = True
     if args.track_w_color_loss is not None:
         config["tracking"]["w_color_loss"] = args.track_w_color_loss
     if args.track_iters is not None:
