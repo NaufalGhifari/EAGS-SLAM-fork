@@ -93,9 +93,17 @@ python -c "import torch; print(torch.__version__, torch.version.cuda)"
 `cmake < 3.28` is important — OpenCV 3.4's build scripts break on newer CMake. That is
 why OpenCV is built *after* the env, using the env's CMake 3.22.
 
-`pip install -r requirements.txt` is redundant with `environment.yml` (near-identical
-contents, including the same four git packages). Only run it if something failed above.
+<!-- `pip install -r requirements.txt` is redundant with `environment.yml` (near-identical -->
+<!-- contents, including the same four git packages). Only run it if something failed above. -->
 
+To ensure the necessary packages are installed before trying to build the submodules, do:
+```bash
+`pip install -r requirements.txt --no-build-isolation`
+```
+then
+```bash
+`pip install -r submodules.txt --no-build-isolation`
+```
 Then the loop-closure dependency:
 
 ```bash
