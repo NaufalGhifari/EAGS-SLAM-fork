@@ -1,5 +1,6 @@
 import json
 import os
+import inspect
 import evo
 import numpy as np
 
@@ -44,6 +45,48 @@ def mkdir_p(folder_path):
             pass
         else:
             raise
+
+
+def plot_ate_trajectory(traj_ref, traj_est_aligned, errors, ape_stats, ape_stat, out_path):
+    """ Renders and saves the xy trajectory plot with a per-pose error colour map.
+
+    Kept separate from the metric computation so that a plotting failure cannot be
+    confused with an evaluation failure - the ATE statistic is computed and written to
+    ``stats_<label>.json`` before this is ever called.
+
+    evo's helpers do not share a single calling convention: ``plot.traj`` takes the axes
+    first, while ``traj_colormap`` takes the trajectory first and accepts ``ax`` by
+    keyword. The order is therefore selected from the installed signature rather than
+    hard-coded, so this keeps working across evo versions.
+
+    Args:
+        traj_ref: Reference (ground truth) trajectory as an evo PosePath3D.
+        traj_est_aligned: Estimated trajectory, aligned to the reference.
+        errors: Per-pose error array used to colour the estimated trajectory.
+        ape_stats: Statistics dict (needs "min" and "max" for the colour scale).
+        ape_stat: RMSE value, used as the plot title.
+        out_path: Where to write the PNG.
+    """
+    plot_mode = evo.tools.plot.PlotMode.xy
+    fig = plt.figure()
+    ax = evo.tools.plot.prepare_axis(fig, plot_mode)
+    ax.set_title(f"ATE RMSE: {ape_stat}")
+    evo.tools.plot.traj(ax, plot_mode, traj_ref, "--", "gray", "gt")
+
+    colormap_kwargs = {"min_map": ape_stats["min"], "max_map": ape_stats["max"]}
+    parameters = list(inspect.signature(evo.tools.plot.traj_colormap).parameters)
+    if parameters and parameters[0] == "traj":
+        evo.tools.plot.traj_colormap(
+            traj_est_aligned, errors, plot_mode, ax=ax, **colormap_kwargs)
+    else:
+        evo.tools.plot.traj_colormap(
+            ax, traj_est_aligned, errors, plot_mode, **colormap_kwargs)
+
+    ax.legend()
+    plt.savefig(out_path, dpi=90)
+    plt.close(fig)  # otherwise figures accumulate over repeated loop-closure passes
+
+
 def evaluate_evo(poses_gt, poses_est, plot_dir, label, monocular=False):
     ## Plot
     traj_ref = PosePath3D(poses_se3=poses_gt)
@@ -68,21 +111,17 @@ def evaluate_evo(poses_gt, poses_est, plot_dir, label, monocular=False):
     ) as f:
         json.dump(ape_stats, f, indent=4)
 
-    plot_mode = evo.tools.plot.PlotMode.xy
-    fig = plt.figure()
-    ax = evo.tools.plot.prepare_axis(fig, plot_mode)
-    ax.set_title(f"ATE RMSE: {ape_stat}")
-    evo.tools.plot.traj(ax, plot_mode, traj_ref, "--", "gray", "gt")
-    evo.tools.plot.traj_colormap(
-        ax,
-        traj_est_aligned,
-        ape_metric.error,
-        plot_mode,
-        min_map=ape_stats["min"],
-        max_map=ape_stats["max"],
-    )
-    ax.legend()
-    plt.savefig(os.path.join(plot_dir, "evo_2dplot_{}.png".format(str(label))), dpi=90)
+    # The trajectory plot is a diagnostic artefact only; the ATE statistic has already
+    # been computed and written to stats_<label>.json above. Plotting must therefore never
+    # abort the run: an evo/matplotlib backend problem (e.g. a headless host where
+    # `evo_config set plot_backend agg` was not applied) previously raised out of the
+    # loop-closure thread, through Loop_closure.check_futures (lc.py:662), and killed the
+    # entire SLAM run for the sake of a PNG.
+    try:
+        plot_ate_trajectory(traj_ref, traj_est_aligned, ape_metric.error, ape_stats, ape_stat,
+                            os.path.join(plot_dir, "evo_2dplot_{}.png".format(str(label))))
+    except Exception as exc:
+        Log(f"skipping ATE trajectory plot ({type(exc).__name__}: {exc})", tag="Eval")
 
     return ape_stat
 
