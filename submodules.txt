@@ -1,0 +1,4 @@
+git+https://github.com/NaufalGhifari/simple-knn.git
+git+https://github.com/NaufalGhifari/diff-gaussian-rasterization-w-pose.git
+git+https://github.com/eriksandstroem/evaluate_3d_reconstruction_lib.git@9b3cc08be5440db9c375cc21e3bd65bb4a337db7
+git+https://github.com/VladimirYugay/gaussian_rasterizer.git@9c40173fcc8d9b16778a1a8040295bc2f9ebf129
